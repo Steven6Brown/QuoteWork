@@ -1,4 +1,4 @@
-![Quotework](./banner.png)
+![Quotework](./quotework.png)
 
 # Quotework
 
