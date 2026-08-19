@@ -28,3 +28,60 @@ A pricing calculator and invoice generator for freelance web design and developm
 - File System Access API (progressive enhancement, Chrome/Edge)
 
 ## Project structure
+
+```
+quotework/
+├── app/
+│ ├── layout.js root layout — fonts, metadata
+│ ├── page.js entry point
+│ └── globals.css theme, layout, print styles
+├── components/
+│ ├── EstimateCalculator.js orchestrator — state & handlers
+│ ├── ClientProjectPanel.js
+│ ├── ProjectScopePanel.js
+│ ├── RateSettingsPanel.js
+│ ├── BusinessInfoPanel.js
+│ ├── SavedEstimatesPanel.js
+│ ├── InvoicesPanel.js
+│ └── EstimateSheet.js
+├── lib/
+│ ├── rates.js pricing constants & quote calculation
+│ └── invoice.js PDF generation & save/delete logic
+├── package.json
+└── next.config.js
+```
+
+
+## Getting started
+
+```bash
+git clone https://github.com/Steven6Brown/QuoteWork.git
+cd QuoteWork
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Build for production
+
+```bash
+npm run build
+npm start
+```
+
+## Deploying
+
+Deployed on [Vercel](https://vercel.com) — connect the repo and it auto-detects Next.js with zero config. Every push to `main` redeploys automatically.
+
+## Data & privacy
+
+No backend, no database, no analytics. Rates, business info, and every saved estimate/invoice live entirely in your browser's `localStorage`. Clearing your browser data clears this app's data too — there's no cloud backup.
+
+## License
+
+MIT — use, modify, and share freely.
+
+---
+
+Built by [Aquila Digital](https://github.com/Steven6Brown) · *Per Aspera Ad Astra*
