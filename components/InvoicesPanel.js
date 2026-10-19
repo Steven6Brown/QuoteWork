@@ -1,4 +1,5 @@
 import { fmt } from '../lib/rates';
+import { invoiceLabel } from '../lib/invoice';
 
 export default function InvoicesPanel({ invoices, onDelete, folderConnected }) {
   return (
@@ -11,7 +12,7 @@ export default function InvoicesPanel({ invoices, onDelete, folderConnected }) {
           [...invoices].reverse().map((inv) => (
             <div className="saved-item" key={inv.id}>
               <div className="meta">
-                <strong>INV-{String(inv.invoiceNumber).padStart(4, '0')} &middot; {inv.client || 'Untitled client'}</strong>
+                <strong>{invoiceLabel(inv.invoiceNumber, inv.invoiceType === 'full')} &middot; {inv.client || 'Untitled client'}</strong>
                 <span>{inv.project || ''} &middot; {inv.invoiceDate} &middot; {fmt(inv.finalPrice)}</span>
               </div>
               <div className="actions">

@@ -1,4 +1,4 @@
-export default function BusinessInfoPanel({ business, setBusiness, nextInvoiceNumber, setNextInvoiceNumber }) {
+export default function BusinessInfoPanel({ business, setBusiness, nextInvoiceNumber, setNextInvoiceNumber, nextMgtNumber, setNextMgtNumber }) {
   return (
     <details>
       <summary>Your business info (for invoices)</summary>
@@ -31,12 +31,22 @@ export default function BusinessInfoPanel({ business, setBusiness, nextInvoiceNu
           <input id="biz-footer" type="text" value={business.footerNote} onChange={(e) => setBusiness((b) => ({ ...b, footerNote: e.target.value }))} />
         </div>
         <div>
-          <label htmlFor="next-invoice-number">Next invoice number</label>
+          <label htmlFor="next-invoice-number">Next project invoice number (INV-)</label>
           <input
             id="next-invoice-number" type="number" min="1" value={nextInvoiceNumber}
             onChange={(e) => setNextInvoiceNumber(Math.max(1, +e.target.value || 1))}
           />
         </div>
+      </div>
+      <div className="field-row">
+        <div>
+          <label htmlFor="next-mgt-number">Next management invoice number (MGT-)</label>
+          <input
+            id="next-mgt-number" type="number" min="1" value={nextMgtNumber}
+            onChange={(e) => setNextMgtNumber(Math.max(1, +e.target.value || 1))}
+          />
+        </div>
+        <div />
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--ink-faint)', marginTop: 8 }}>
         Invoice numbers don&apos;t reset automatically when you delete estimates \u2014 reused numbers cause real bookkeeping problems if an old invoice ever needs tracing. Change this manually only when you&apos;re sure it&apos;s safe to (e.g. before you&apos;ve sent any real invoices).

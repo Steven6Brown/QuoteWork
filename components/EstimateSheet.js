@@ -1,11 +1,11 @@
-import { fmt } from '../lib/rates';
+import { fmt, fmtRange, maintText } from '../lib/rates';
 import { PAYMENT_TERMS } from '../lib/invoice';
 
 export default function EstimateSheet({
   clientName, projectName, lines, low, high, depositLow, depositHigh,
-  hostingChoice, maintAmount, saveFlash, onSave, copyFlash, onCopy,
+  hostingChoice, maintPlan, lineTotalMid, saveFlash, onSave, copyFlash, onCopy,
   finalPrice, setFinalPrice, finalPriceTouched, setFinalPriceTouched,
-  paymentTerms, setPaymentTerms, invoiceFlash, onDownloadInvoice,
+  paymentTerms, setPaymentTerms, invoiceType, setInvoiceType, invoiceFlash, onDownloadInvoice,
   folderPickerSupported, folderName, onChooseFolder,
 }) {
   return (
@@ -22,20 +22,20 @@ export default function EstimateSheet({
         {lines.map((l, i) => (
           <div className="line" key={i}>
             <span className="l-label">{l.label}</span>
-            <span className="l-price">{l.low === l.high ? fmt(l.low) : `${fmt(l.low)}\u2013${fmt(l.high)}`}</span>
+            <span className="l-price">{fmtRange(l.low, l.high)}</span>
           </div>
         ))}
       </div>
 
       <div className="totals">
-        <div className="row grand"><span>Total quote</span><span>{fmt(low)}&ndash;{fmt(high)}</span></div>
-        <div className="row sub"><span>Deposit due to start</span><span>{fmt(depositLow)}&ndash;{fmt(depositHigh)}</span></div>
+        <div className="row grand"><span>Total quote</span><span>{fmtRange(low, high)}</span></div>
+        <div className="row sub"><span>Deposit due to start</span><span>{fmtRange(depositLow, depositHigh)}</span></div>
       </div>
 
       {hostingChoice === 'managed' && (
         <div className="maint-note">
-          <span>Plus monthly maintenance</span>
-          <span>${maintAmount}/mo</span>
+          <span>Plus ongoing website management</span>
+          <span>{maintText(maintPlan)}</span>
         </div>
       )}
 
@@ -67,6 +67,18 @@ export default function EstimateSheet({
             </select>
           </div>
         </div>
+        <div>
+          <label htmlFor="invoice-type">Invoice type</label>
+          <select id="invoice-type" value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)}>
+            <option value="split">Deposit and balance (project invoice)</option>
+            <option value="full">Pay in full (management or single payment)</option>
+          </select>
+        </div>
+        {Math.abs(lineTotalMid - finalPrice) > 1 && (
+          <p role="alert" style={{ fontSize: 12.5, color: 'var(--stamp, #a8412c)', margin: '2px 0 0' }}>
+            The invoice lines add up to about {fmt(lineTotalMid)}, but Total due is {fmt(finalPrice)}. Tick &quot;Use custom lines only&quot; and enter your own lines, or adjust the final price.
+          </p>
+        )}
         {finalPriceTouched && (
           <button type="button" className="ghost small" style={{ alignSelf: 'flex-start', padding: '2px 0' }} onClick={() => setFinalPriceTouched(false)}>
             Reset to midpoint ({fmt((low + high) / 2)})

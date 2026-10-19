@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { DEFAULT_RATES, fmt, computeQuote, mergeWithDefaults } from '../lib/rates';
-import { buildInvoicePDF, invoiceFilename, savePdf, deleteInvoiceFile } from '../lib/invoice';
+import { DEFAULT_RATES, fmt, fmtRange, computeQuote, mergeWithDefaults, maintText } from '../lib/rates';
+import { buildInvoicePDF, invoiceFilename, savePdf, deleteInvoiceFile, loadImageDataUrl } from '../lib/invoice';
 import ClientProjectPanel from './ClientProjectPanel';
 import ProjectScopePanel from './ProjectScopePanel';
 // import RateLevelPanel from './RateLevelPanel'; // disabled — rates are now adjusted directly in "Customize your base rates"
@@ -29,7 +29,9 @@ export default function EstimateCalculator() {
   const [addons, setAddons] = useState({});
   const [rush, setRush] = useState(false);
   const [hostingChoice, setHostingChoice] = useState(null);
-  const [maintAmount, setMaintAmount] = useState(200);
+  const [maintPlan, setMaintPlan] = useState('monthly');
+  const [customLines, setCustomLines] = useState([]);
+  const [customOnly, setCustomOnly] = useState(false);
   const [expIndex, setExpIndex] = useState(0);
   const [saveFlash, setSaveFlash] = useState(false);
   const [copyFlash, setCopyFlash] = useState(false);
@@ -38,11 +40,13 @@ export default function EstimateCalculator() {
   const [finalPrice, setFinalPrice] = useState(0);
   const [finalPriceTouched, setFinalPriceTouched] = useState(false);
   const [paymentTerms, setPaymentTerms] = useState('due_on_receipt');
+  const [invoiceType, setInvoiceType] = useState('split');
   const [folderHandle, setFolderHandle] = useState(null);
   const [folderName, setFolderName] = useState('');
   const [invoiceFlash, setInvoiceFlash] = useState('');
   const [folderPickerSupported, setFolderPickerSupported] = useState(false);
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState(1);
+  const [nextMgtNumber, setNextMgtNumber] = useState(1);
 
   // Load persisted data once, client-side only
   useEffect(() => {
@@ -63,6 +67,8 @@ export default function EstimateCalculator() {
     try {
       const counter = parseInt(localStorage.getItem('invoiceCounter') || '0', 10);
       setNextInvoiceNumber(counter + 1);
+      const mgtCounter = parseInt(localStorage.getItem('invoiceCounterMgt') || '0', 10);
+      setNextMgtNumber(mgtCounter + 1);
     } catch {}
   }, []);
 
@@ -74,9 +80,9 @@ export default function EstimateCalculator() {
     if (mounted) localStorage.setItem('businessInfo', JSON.stringify(business));
   }, [business, mounted]);
 
-  const formState = { typeVal, extraPages, extraRevisions, features, addons, rush, expIndex, hostingChoice };
+  const formState = { typeVal, extraPages, extraRevisions, features, addons, rush, expIndex, hostingChoice, maintPlan, customLines, customOnly };
   const { lines, low, high } = useMemo(() => computeQuote(rates, formState), [
-    rates, typeVal, extraPages, extraRevisions, features, addons, rush, expIndex, hostingChoice,
+    rates, typeVal, extraPages, extraRevisions, features, addons, rush, expIndex, hostingChoice, maintPlan, customLines, customOnly,
   ]);
 
   const depositLow = low * (rates.depositPct / 100);
@@ -90,6 +96,11 @@ export default function EstimateCalculator() {
   const updateNextInvoiceNumber = (n) => {
     setNextInvoiceNumber(n);
     try { localStorage.setItem('invoiceCounter', String(n - 1)); } catch {}
+  };
+
+  const updateNextMgtNumber = (n) => {
+    setNextMgtNumber(n);
+    try { localStorage.setItem('invoiceCounterMgt', String(n - 1)); } catch {}
   };
 
   const chooseFolder = async () => {
@@ -106,7 +117,8 @@ export default function EstimateCalculator() {
   const currentFields = () => ({
     client: clientName, project: projectName, low, high,
     typeVal, extraPages, extraRevisions, expIndex, features, addons,
-    rush, hostingChoice, maintAmount, finalPrice, paymentTerms,
+    rush, hostingChoice, maintPlan, finalPrice, paymentTerms,
+    customLines, customOnly, invoiceType,
   });
 
   // Saves the current form to the active record if one exists, otherwise
@@ -134,17 +146,25 @@ export default function EstimateCalculator() {
   };
 
   const downloadInvoice = async () => {
-    const invoiceNumber = nextInvoiceNumber;
+    const payInFull = invoiceType === 'full';
+    const invoiceNumber = payInFull ? nextMgtNumber : nextInvoiceNumber;
+    const logo = await loadImageDataUrl('/aquila-logo.png');
     const doc = buildInvoicePDF({
       business, client: clientName, project: projectName, lines,
       finalPrice, depositPct: rates.depositPct, paymentTerms, invoiceNumber,
-      notes: business.footerNote,
+      notes: business.footerNote, logo, payInFull,
+      recurring: hostingChoice === 'managed' && typeVal !== 'none' ? `Ongoing website management: ${maintText(maintPlan)}, billed separately from this invoice.` : '',
     });
-    const filename = invoiceFilename({ client: clientName, project: projectName, invoiceNumber });
-    const result = await savePdf(doc, filename, folderHandle);
+    const filename = invoiceFilename({ client: clientName, project: projectName, invoiceNumber, payInFull });
+    const result = await savePdf(doc, filename, folderHandle, payInFull ? 'management' : 'project');
     const advanced = invoiceNumber + 1;
-    setNextInvoiceNumber(advanced);
-    try { localStorage.setItem('invoiceCounter', String(invoiceNumber)); } catch {}
+    if (payInFull) {
+      setNextMgtNumber(advanced);
+      try { localStorage.setItem('invoiceCounterMgt', String(invoiceNumber)); } catch {}
+    } else {
+      setNextInvoiceNumber(advanced);
+      try { localStorage.setItem('invoiceCounter', String(invoiceNumber)); } catch {}
+    }
 
     // Attach the invoice to this estimate's record — creating the record
     // first if it hasn't been saved yet, rather than tracking invoices
@@ -154,7 +174,11 @@ export default function EstimateCalculator() {
       invoiceDate: new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
     });
 
-    setInvoiceFlash(result.savedTo === 'folder' ? `Saved to ${folderName}` : 'Downloaded');
+    setInvoiceFlash(
+      result.savedTo === 'configured' ? `Saved to ${result.folder}`
+        : result.savedTo === 'folder' ? `Saved to ${folderName}`
+        : 'Downloaded'
+    );
     setTimeout(() => setInvoiceFlash(''), 2000);
   };
 
@@ -169,6 +193,21 @@ export default function EstimateCalculator() {
     );
     setSavedList(next);
     localStorage.setItem('savedEstimates', JSON.stringify(next));
+  };
+
+  // Choosing "No website package" switches to a pay-in-full invoice (nothing to
+  // split into deposit and balance); picking a package switches back.
+  // Either change also detaches from the estimate being edited, so the next
+  // save creates a new record instead of overwriting the one of the other type.
+  const changeType = (value) => {
+    setTypeVal(value);
+    setInvoiceType(value === 'none' ? 'full' : 'split');
+    setActiveEstimateId(null);
+  };
+
+  const changeInvoiceType = (value) => {
+    setInvoiceType(value);
+    setActiveEstimateId(null);
   };
 
   const updateTypeRate = (type, field, value) =>
@@ -220,10 +259,13 @@ export default function EstimateCalculator() {
     setAddons({});
     setRush(false);
     setHostingChoice(null);
-    setMaintAmount(200);
+    setMaintPlan('monthly');
+    setCustomLines([]);
+    setCustomOnly(false);
     setExpIndex(0);
     setFinalPriceTouched(false);
     setPaymentTerms('due_on_receipt');
+    setInvoiceType('split');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -239,10 +281,13 @@ export default function EstimateCalculator() {
     setAddons(item.addons || {});
     setRush(!!item.rush);
     setHostingChoice(item.hostingChoice || null);
-    setMaintAmount(item.maintAmount || 200);
+    setMaintPlan(item.maintPlan || 'monthly');
+    setCustomLines(Array.isArray(item.customLines) ? item.customLines : []);
+    setCustomOnly(!!item.customOnly);
     if (item.finalPrice) { setFinalPrice(item.finalPrice); setFinalPriceTouched(true); }
     else { setFinalPriceTouched(false); }
     setPaymentTerms(item.paymentTerms || 'due_on_receipt');
+    setInvoiceType(item.invoiceType || 'split');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -252,12 +297,11 @@ export default function EstimateCalculator() {
     if (projectName) text += `Project: ${projectName}\n`;
     text += '\n';
     lines.forEach((l) => {
-      const p = l.low === l.high ? fmt(l.low) : `${fmt(l.low)}\u2013${fmt(l.high)}`;
-      text += `${l.label}: ${p}\n`;
+      text += `${l.label}: ${fmtRange(l.low, l.high)}\n`;
     });
-    text += `\nTotal: ${fmt(low)}\u2013${fmt(high)}`;
-    text += `\nDeposit due (${rates.depositPct}%): ${fmt(depositLow)}\u2013${fmt(depositHigh)}`;
-    if (hostingChoice === 'managed') text += `\nMonthly maintenance: $${maintAmount}/mo`;
+    text += `\nTotal: ${fmtRange(low, high)}`;
+    text += `\nDeposit due (${rates.depositPct}%): ${fmtRange(depositLow, depositHigh)}`;
+    if (hostingChoice === 'managed' && typeVal !== 'none') text += `\nOngoing website management: ${maintText(maintPlan)} (billed separately)`;
     navigator.clipboard.writeText(text).then(() => {
       setCopyFlash(true);
       setTimeout(() => setCopyFlash(false), 1200);
@@ -287,14 +331,16 @@ export default function EstimateCalculator() {
           <ClientProjectPanel clientName={clientName} setClientName={setClientName} projectName={projectName} setProjectName={setProjectName} />
 
           <ProjectScopePanel
-            rates={rates} typeVal={typeVal} setTypeVal={setTypeVal}
+            rates={rates} typeVal={typeVal} setTypeVal={changeType}
             extraPages={extraPages} setExtraPages={setExtraPages}
             extraRevisions={extraRevisions} setExtraRevisions={setExtraRevisions}
             features={features} toggleFeature={toggleFeature}
             addons={addons} toggleAddon={toggleAddon}
             rush={rush} setRush={setRush}
             hostingChoice={hostingChoice} setHostingChoice={setHostingChoice}
-            maintAmount={maintAmount} setMaintAmount={setMaintAmount}
+            maintPlan={maintPlan} setMaintPlan={setMaintPlan}
+            customLines={customLines} setCustomLines={setCustomLines}
+            customOnly={customOnly} setCustomOnly={setCustomOnly}
           />
 
           {/* <RateLevelPanel expIndex={expIndex} setExpIndex={setExpIndex} /> */}
@@ -305,7 +351,7 @@ export default function EstimateCalculator() {
             updateAddonRate={updateAddonRate} updateMult={updateMult} resetRates={resetRates}
           />
 
-          <BusinessInfoPanel business={business} setBusiness={setBusiness} nextInvoiceNumber={nextInvoiceNumber} setNextInvoiceNumber={updateNextInvoiceNumber} />
+          <BusinessInfoPanel business={business} setBusiness={setBusiness} nextInvoiceNumber={nextInvoiceNumber} setNextInvoiceNumber={updateNextInvoiceNumber} nextMgtNumber={nextMgtNumber} setNextMgtNumber={updateNextMgtNumber} />
 
           <SavedEstimatesPanel savedList={savedList} onLoad={loadEstimate} onDelete={deleteEstimate} activeEstimateId={activeEstimateId} />
 
@@ -316,12 +362,14 @@ export default function EstimateCalculator() {
           <EstimateSheet
             clientName={clientName} projectName={projectName} lines={lines}
             low={low} high={high} depositLow={depositLow} depositHigh={depositHigh}
-            hostingChoice={hostingChoice} maintAmount={maintAmount}
+            hostingChoice={typeVal === 'none' ? null : hostingChoice} maintPlan={maintPlan}
+            lineTotalMid={(low + high) / 2}
             saveFlash={saveFlash} onSave={saveEstimate}
             copyFlash={copyFlash} onCopy={copyAsText}
             finalPrice={finalPrice} setFinalPrice={setFinalPrice}
             finalPriceTouched={finalPriceTouched} setFinalPriceTouched={setFinalPriceTouched}
             paymentTerms={paymentTerms} setPaymentTerms={setPaymentTerms}
+            invoiceType={invoiceType} setInvoiceType={changeInvoiceType}
             invoiceFlash={invoiceFlash} onDownloadInvoice={downloadInvoice}
             folderPickerSupported={folderPickerSupported} folderName={folderName} onChooseFolder={chooseFolder}
           />
